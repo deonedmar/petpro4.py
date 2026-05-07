@@ -3,8 +3,12 @@ import sqlite3
 import pandas as pd
 import hashlib
 import secrets
+import os
 from datetime import datetime, date
 from contextlib import contextmanager
+
+# Caminho absoluto do banco — sempre na mesma pasta do app.py
+DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pet_taxi.db")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIGURAÇÃO DA PÁGINA
@@ -206,8 +210,6 @@ div[data-testid="stForm"] { border: none !important; }
 # ══════════════════════════════════════════════════════════════════════════════
 #  BANCO DE DADOS
 # ══════════════════════════════════════════════════════════════════════════════
-DB = "pet_taxi.db"
-
 
 @contextmanager
 def conn():

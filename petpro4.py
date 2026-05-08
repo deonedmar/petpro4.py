@@ -5,7 +5,7 @@ import pandas as pd
 import hashlib
 import os
 from datetime import datetime, date
-#bug
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIGURAÇÃO DA PÁGINA
 # ══════════════════════════════════════════════════════════════════════════════

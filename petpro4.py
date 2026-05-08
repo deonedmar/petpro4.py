@@ -1,14 +1,10 @@
 import streamlit as st
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import pandas as pd
 import hashlib
-import secrets
 import os
 from datetime import datetime, date
-from contextlib import contextmanager
-
-# Caminho absoluto do banco — sempre na mesma pasta do app.py
-DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pet_taxi.db")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIGURAÇÃO DA PÁGINA
@@ -26,415 +22,192 @@ st.set_page_config(
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 h1,h2,h3 { font-family: 'Syne', sans-serif !important; font-weight: 800; }
 
-/* ── LOGIN ── */
 .login-wrap {
-    max-width: 420px;
-    margin: 60px auto 0 auto;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 20px;
-    padding: 40px 44px;
+    max-width: 420px; margin: 60px auto 0 auto;
+    background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 20px; padding: 40px 44px;
     box-shadow: 0 8px 32px rgba(0,0,0,.08);
 }
-.login-logo {
-    text-align: center;
-    font-size: 3.2rem;
-    margin-bottom: 6px;
-}
-.login-title {
-    text-align: center;
-    font-family: 'Syne', sans-serif;
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #0f172a;
-    margin-bottom: 4px;
-}
-.login-sub {
-    text-align: center;
-    font-size: .85rem;
-    color: #94a3b8;
-    margin-bottom: 28px;
-}
+.login-logo { text-align:center; font-size:3.2rem; margin-bottom:6px; }
+.login-title { text-align:center; font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; color:#0f172a; margin-bottom:4px; }
+.login-sub   { text-align:center; font-size:.85rem; color:#94a3b8; margin-bottom:28px; }
 
-/* ── SIDEBAR ── */
-[data-testid="stSidebar"] {
-    background: #0f172a !important;
-    border-right: 1px solid #1e293b;
-}
-[data-testid="stSidebar"] * { color: #cbd5e1 !important; }
-[data-testid="stSidebar"] .stRadio label {
-    padding: 10px 14px;
-    border-radius: 8px;
-    margin-bottom: 4px;
-    display: block;
-    transition: background .2s;
-}
-[data-testid="stSidebar"] .stRadio label:hover { background: #1e293b; }
+[data-testid="stSidebar"] { background:#0f172a !important; border-right:1px solid #1e293b; }
+[data-testid="stSidebar"] * { color:#cbd5e1 !important; }
+[data-testid="stSidebar"] .stRadio label { padding:10px 14px; border-radius:8px; margin-bottom:4px; display:block; transition:background .2s; }
+[data-testid="stSidebar"] .stRadio label:hover { background:#1e293b; }
 
-/* ── MÉTRICAS ── */
-[data-testid="metric-container"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 20px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.06);
-}
-[data-testid="stMetricValue"] {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 2rem !important;
-}
+[data-testid="metric-container"] { background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:20px !important; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+[data-testid="stMetricValue"] { font-family:'Syne',sans-serif !important; font-size:2rem !important; }
 
-/* ── BOTÕES ── */
-.stButton > button[kind="primary"] {
-    background: #0f172a !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
-    padding: 10px 24px !important;
-    transition: opacity .2s !important;
-}
-.stButton > button[kind="primary"]:hover { opacity: .85 !important; }
+.stButton > button[kind="primary"] { background:#0f172a !important; color:white !important; border:none !important; border-radius:10px !important; font-family:'Syne',sans-serif !important; font-weight:700 !important; padding:10px 24px !important; transition:opacity .2s !important; }
+.stButton > button[kind="primary"]:hover { opacity:.85 !important; }
 
-/* ── CARDS ── */
-.pet-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 18px 22px;
-    margin-bottom: 12px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.05);
-    transition: box-shadow .2s;
-}
-.pet-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+.pet-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:18px 22px; margin-bottom:12px; box-shadow:0 1px 4px rgba(0,0,0,.05); transition:box-shadow .2s; }
+.pet-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.1); }
+.cliente-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:16px 20px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.user-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:10px; }
+.preco-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:6px; }
 
-.cliente-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 16px 20px;
-    margin-bottom: 10px;
-    box-shadow: 0 1px 3px rgba(0,0,0,.04);
-}
+.badge { display:inline-block; padding:4px 14px; border-radius:20px; font-size:.78rem; font-weight:700; font-family:'Syne',sans-serif; letter-spacing:.03em; }
+.badge-admin { background:#fef3c7; color:#92400e; padding:3px 10px; border-radius:12px; font-size:.75rem; font-weight:700; }
+.badge-func  { background:#eff6ff; color:#1e40af; padding:3px 10px; border-radius:12px; font-size:.75rem; font-weight:700; }
 
-.user-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 14px 18px;
-    margin-bottom: 10px;
-}
+.legenda-wrap { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 18px 0; }
+.legenda-item { display:flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:5px 12px; font-size:.8rem; }
+.legenda-dot  { width:10px; height:10px; border-radius:50%; display:inline-block; flex-shrink:0; }
 
-/* ── BADGES ── */
-.badge {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-size: .78rem;
-    font-weight: 700;
-    font-family: 'Syne', sans-serif;
-    letter-spacing: .03em;
-}
-.badge-admin {
-    background: #fef3c7;
-    color: #92400e;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: .75rem;
-    font-weight: 700;
-}
-.badge-func {
-    background: #eff6ff;
-    color: #1e40af;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: .75rem;
-    font-weight: 700;
-}
+.info-box { background:#f0f9ff; border-left:4px solid #0ea5e9; border-radius:0 10px 10px 0; padding:14px 18px; margin:10px 0; }
+.warn-box { background:#fffbeb; border-left:4px solid #f59e0b; border-radius:0 10px 10px 0; padding:14px 18px; margin:10px 0; }
 
-/* ── LEGENDAS ── */
-.legenda-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 10px 0 18px 0;
-}
-.legenda-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 5px 12px;
-    font-size: .8rem;
-}
-.legenda-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    flex-shrink: 0;
-}
-
-/* ── CAIXAS ── */
-.info-box {
-    background: #f0f9ff;
-    border-left: 4px solid #0ea5e9;
-    border-radius: 0 10px 10px 0;
-    padding: 14px 18px; margin: 10px 0;
-}
-.warn-box {
-    background: #fffbeb;
-    border-left: 4px solid #f59e0b;
-    border-radius: 0 10px 10px 0;
-    padding: 14px 18px; margin: 10px 0;
-}
-.preco-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 14px 18px; margin-bottom: 6px;
-}
-
-.stExpander { border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
-div[data-testid="stForm"] { border: none !important; }
+.stExpander { border:1px solid #e2e8f0 !important; border-radius:12px !important; }
+div[data-testid="stForm"] { border:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  BANCO DE DADOS
+#  CONEXÃO COM SUPABASE (PostgreSQL)
 # ══════════════════════════════════════════════════════════════════════════════
+DB_URL = st.secrets.get("DATABASE_URL",
+    "postgresql://postgres:Arty193show#@db.adhwhugtnexfuhgnizte.supabase.co:5432/postgres"
+)
 
-@contextmanager
-def conn():
-    c = sqlite3.connect(DB, check_same_thread=False)
-    c.row_factory = sqlite3.Row
-    c.execute("PRAGMA journal_mode=WAL")
+
+@st.cache_resource
+def get_engine():
+    return psycopg2.connect(DB_URL, sslmode="require", connect_timeout=10)
+
+
+def get_conn():
     try:
-        yield c
-        c.commit()
-    except Exception as e:
-        c.rollback()
-        raise e
-    finally:
-        c.close()
+        c = get_engine()
+        c.isolation_level  # testa se ainda está vivo
+        return c
+    except Exception:
+        st.cache_resource.clear()
+        return get_engine()
 
 
-def init_db():
-    with conn() as c:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome       TEXT NOT NULL,
-            login      TEXT NOT NULL UNIQUE,
-            senha_hash TEXT NOT NULL,
-            perfil     TEXT NOT NULL DEFAULT 'funcionario',
-            ativo      INTEGER NOT NULL DEFAULT 1,
-            criado_em  TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS agendamentos (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor     TEXT NOT NULL,
-            pet       TEXT NOT NULL,
-            servico   TEXT NOT NULL,
-            data      TEXT NOT NULL,
-            horario   TEXT NOT NULL,
-            logistica TEXT NOT NULL DEFAULT 'Sem Transporte',
-            endereco  TEXT DEFAULT '',
-            status    TEXT NOT NULL DEFAULT 'Agendado',
-            valor     REAL NOT NULL DEFAULT 0,
-            criado_em TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS clientes (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor           TEXT NOT NULL,
-            pet             TEXT NOT NULL,
-            ultimo_endereco TEXT DEFAULT '',
-            telefone        TEXT DEFAULT '',
-            total_servicos  INTEGER DEFAULT 0,
-            criado_em       TEXT DEFAULT (datetime('now','localtime')),
-            UNIQUE(tutor, pet)
-        );
-        CREATE TABLE IF NOT EXISTS historico (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor     TEXT NOT NULL,
-            pet       TEXT NOT NULL,
-            servico   TEXT NOT NULL,
-            data      TEXT NOT NULL,
-            valor     REAL NOT NULL,
-            criado_em TEXT DEFAULT (datetime('now','localtime'))
-        );
-        CREATE TABLE IF NOT EXISTS precos (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo      TEXT NOT NULL,
-            nome      TEXT NOT NULL UNIQUE,
-            valor     REAL NOT NULL,
-            descricao TEXT DEFAULT ''
-        );
-        """)
+def df_query(sql, params=()):
+    c = get_conn()
+    with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
-        # Migrações seguras
-        for alter in [
-            "ALTER TABLE clientes ADD COLUMN telefone TEXT DEFAULT ''",
-            "ALTER TABLE precos ADD COLUMN descricao TEXT DEFAULT ''",
-        ]:
-            try:
-                c.execute(alter)
-            except Exception:
-                pass
 
-        # Usuário admin padrão (só cria se não existir nenhum)
-        qtd_users = c.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
-        if qtd_users == 0:
-            c.execute(
-                "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?,?,?,?)",
-                ("Administrador", "admin", _hash("admin123"), "admin")
-            )
-
-        # Preços padrão
-        qtd_precos = c.execute("SELECT COUNT(*) FROM precos").fetchone()[0]
-        if qtd_precos == 0:
-            defaults = [
-                ("servico",   "Banho",                50.0, "Banho completo com shampoo e secagem"),
-                ("servico",   "Tosa",                 65.0, "Tosa higiênica ou padrão de raça"),
-                ("servico",   "Banho + Tosa",         110.0, "Banho completo + tosa no mesmo dia"),
-                ("servico",   "Consulta Veterinária",  90.0, "Consulta clínica geral com veterinário"),
-                ("servico",   "Hidratação",            45.0, "Hidratação profunda do pelo"),
-                ("logistica", "Sem Transporte",          0.0, "Cliente leva e busca o pet"),
-                ("logistica", "Busca + Entrega",        20.0, "Buscamos e entregamos em casa"),
-                ("logistica", "Só Busca",              10.0, "Buscamos o pet na casa do cliente"),
-                ("logistica", "Só Entrega",            10.0, "Entregamos o pet após o serviço"),
-            ]
-            c.executemany(
-                "INSERT INTO precos (tipo, nome, valor, descricao) VALUES (?,?,?,?)",
-                defaults
-            )
+def executar(sql, params=()):
+    c = get_conn()
+    with c.cursor() as cur:
+        cur.execute(sql, params)
+        try:
+            result = cur.fetchone()
+            val = result[0] if result else None
+        except Exception:
+            val = None
+    c.commit()
+    return val
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  AUTENTICAÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
-
-def _hash(senha: str) -> str:
+def _hash(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
 
-def autenticar(login: str, senha: str):
-    """Retorna o registro do usuário ou None."""
-    with conn() as c:
-        row = c.execute(
-            "SELECT * FROM usuarios WHERE login=? AND senha_hash=? AND ativo=1",
-            (login.strip().lower(), _hash(senha))
-        ).fetchone()
-    return dict(row) if row else None
+def autenticar(login, senha):
+    df = df_query(
+        "SELECT * FROM usuarios WHERE login=%s AND senha_hash=%s AND ativo=1",
+        (login.strip().lower(), _hash(senha))
+    )
+    return df.iloc[0].to_dict() if not df.empty else None
 
 
 def tela_login():
-    """Renderiza a tela de login e para a execução do resto do app."""
-    # Oculta sidebar completamente na tela de login
     st.markdown("""
     <style>
-        [data-testid="stSidebar"] { display: none !important; }
-        [data-testid="collapsedControl"] { display: none !important; }
+        [data-testid="stSidebar"]       { display:none !important; }
+        [data-testid="collapsedControl"] { display:none !important; }
     </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
     <div class='login-wrap'>
         <div class='login-logo'>🐾</div>
         <div class='login-title'>Pet & Taxi Pro</div>
-        <div class='login-sub'>Sistema de Gestão — faça login para continuar</div>
+        <div class='login-sub'>Faça login para continuar</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Centraliza o formulário
-    col_l, col_c, col_r = st.columns([1, 1.2, 1])
-    with col_c:
-        with st.form("form_login", clear_on_submit=False):
-            login  = st.text_input("👤 Usuário", placeholder="seu_usuario")
-            senha  = st.text_input("🔒 Senha", type="password", placeholder="••••••••")
-            entrar = st.form_submit_button("Entrar →", type="primary", use_container_width=True)
-
-        if entrar:
-            usuario = autenticar(login, senha)
-            if usuario:
-                st.session_state["usuario"] = usuario
-                st.rerun()
-            else:
-                st.error("❌ Usuário ou senha incorretos.")
-
-    st.stop()   # ← Impede qualquer código do app de rodar antes do login
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
+        with st.form("form_login"):
+            login = st.text_input("👤 Usuário", placeholder="seu_usuario")
+            senha = st.text_input("🔒 Senha",   type="password", placeholder="••••••••")
+            if st.form_submit_button("Entrar →", type="primary", use_container_width=True):
+                u = autenticar(login, senha)
+                if u:
+                    st.session_state["usuario"] = u
+                    st.rerun()
+                else:
+                    st.error("❌ Usuário ou senha incorretos.")
+    st.stop()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  HELPERS DE BANCO
+#  HELPERS DE NEGÓCIO
 # ══════════════════════════════════════════════════════════════════════════════
-
-def df_query(sql, params=()):
-    with conn() as c:
-        return pd.read_sql_query(sql, c, params=params)
-
-
-def executar(sql, params=()):
-    with conn() as c:
-        return c.execute(sql, params).lastrowid
-
-
 def horario_livre(data_str, horario):
     r = df_query(
-        "SELECT COUNT(*) as n FROM agendamentos WHERE data=? AND horario=?",
+        "SELECT COUNT(*) as n FROM agendamentos WHERE data=%s AND horario=%s",
         (data_str, horario)
     )
-    return int(r["n"].iloc[0]) < 3
+    return int(r["n"].iloc[0]) < 3 if not r.empty else True
 
 
 def upsert_cliente(tutor, pet, endereco):
-    with conn() as c:
-        c.execute("""
-            INSERT INTO clientes (tutor, pet, ultimo_endereco, total_servicos)
-            VALUES (?, ?, ?, 1)
-            ON CONFLICT(tutor, pet) DO UPDATE SET
-                ultimo_endereco = excluded.ultimo_endereco,
-                total_servicos  = total_servicos + 1
-        """, (tutor, pet, endereco))
+    executar("""
+        INSERT INTO clientes (tutor, pet, ultimo_endereco, total_servicos)
+        VALUES (%s, %s, %s, 1)
+        ON CONFLICT (tutor, pet) DO UPDATE SET
+            ultimo_endereco = EXCLUDED.ultimo_endereco,
+            total_servicos  = clientes.total_servicos + 1
+    """, (tutor, pet, endereco))
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  PREÇOS DINÂMICOS
-# ══════════════════════════════════════════════════════════════════════════════
 
 def get_precos():
     df = df_query("SELECT nome, valor FROM precos WHERE tipo='servico' ORDER BY id")
-    return dict(zip(df["nome"], df["valor"]))
+    return dict(zip(df["nome"], df["valor"])) if not df.empty else {}
+
 
 def get_taxas():
     df = df_query("SELECT nome, valor FROM precos WHERE tipo='logistica' ORDER BY id")
-    return dict(zip(df["nome"], df["valor"]))
+    return dict(zip(df["nome"], df["valor"])) if not df.empty else {}
+
 
 def get_precos_completo():
     return df_query("SELECT * FROM precos WHERE tipo='servico' ORDER BY id")
 
+
 def get_taxas_completo():
     return df_query("SELECT * FROM precos WHERE tipo='logistica' ORDER BY id")
 
+
 def salvar_preco(nome, valor, descricao=""):
-    executar("UPDATE precos SET valor=?, descricao=? WHERE nome=?", (valor, descricao, nome))
+    executar("UPDATE precos SET valor=%s, descricao=%s WHERE nome=%s", (valor, descricao, nome))
+
 
 def adicionar_item(tipo, nome, valor, descricao=""):
-    with conn() as c:
-        c.execute(
-            "INSERT OR IGNORE INTO precos (tipo, nome, valor, descricao) VALUES (?,?,?,?)",
-            (tipo, nome, valor, descricao)
-        )
+    executar(
+        "INSERT INTO precos (tipo, nome, valor, descricao) VALUES (%s,%s,%s,%s) ON CONFLICT (nome) DO NOTHING",
+        (tipo, nome, valor, descricao)
+    )
+
 
 def remover_preco(nome):
-    executar("DELETE FROM precos WHERE nome=?", (nome,))
+    executar("DELETE FROM precos WHERE nome=%s", (nome,))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -458,32 +231,26 @@ COR_STATUS = {
     "Finalizado":        ("#1F2937", "#F9FAFB"),
 }
 
-def badge(status):
-    cor_txt, cor_bg = COR_STATUS.get(status, ("#6B7280", "#F3F4F6"))
-    return f"<span class='badge' style='color:{cor_txt};background:{cor_bg}'>{status}</span>"
 
-def legenda_status(lista_status):
+def badge(status):
+    t, b = COR_STATUS.get(status, ("#6B7280", "#F3F4F6"))
+    return f"<span class='badge' style='color:{t};background:{b}'>{status}</span>"
+
+
+def legenda_status(lista):
     itens = ""
-    for s in lista_status:
-        cor_txt, _ = COR_STATUS.get(s, ("#6B7280", "#F3F4F6"))
-        itens += f"""
-        <div class='legenda-item'>
-            <span class='legenda-dot' style='background:{cor_txt}'></span>
-            <span style='color:#374151'>{s}</span>
-        </div>"""
+    for s in lista:
+        t, _ = COR_STATUS.get(s, ("#6B7280", "#F3F4F6"))
+        itens += f"<div class='legenda-item'><span class='legenda-dot' style='background:{t}'></span><span style='color:#374151'>{s}</span></div>"
     return f"<div class='legenda-wrap'>{itens}</div>"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  INICIALIZAR BANCO E VERIFICAR LOGIN
+#  INICIALIZAR E VERIFICAR LOGIN
 # ══════════════════════════════════════════════════════════════════════════════
-init_db()
-
-# Se não estiver logado → mostra login e para
 if "usuario" not in st.session_state:
     tela_login()
 
-# A partir daqui o usuário está autenticado
 usuario_atual = st.session_state["usuario"]
 is_admin      = usuario_atual["perfil"] == "admin"
 HOJE          = str(date.today())
@@ -496,15 +263,12 @@ with st.sidebar:
     st.markdown("""
     <div style='text-align:center;padding:20px 0 10px'>
         <div style='font-size:3rem'>🐾</div>
-        <div style='font-family:Syne,sans-serif;font-weight:800;font-size:1.3rem;color:#f1f5f9'>
-            Pet & Taxi Pro
-        </div>
+        <div style='font-family:Syne,sans-serif;font-weight:800;font-size:1.3rem;color:#f1f5f9'>Pet & Taxi Pro</div>
         <div style='font-size:.78rem;color:#64748b;margin-top:4px'>Sistema de Gestão</div>
     </div>
     """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # Menu (admin vê tudo; funcionário não vê Usuários)
     opcoes = [
         "📊  Dashboard",
         "📝  Novo Agendamento",
@@ -517,30 +281,21 @@ with st.sidebar:
         opcoes.append("🔐  Usuários")
 
     pagina = st.radio("", opcoes, label_visibility="collapsed")
-
     st.markdown("---")
 
-    # Usuário logado + perfil
-    perfil_badge = (
-        "<span class='badge-admin'>Admin</span>"
-        if is_admin else
-        "<span class='badge-func'>Funcionário</span>"
-    )
+    perfil_html = "<span class='badge-admin'>Admin</span>" if is_admin else "<span class='badge-func'>Funcionário</span>"
     st.markdown(
         f"<div style='font-size:.82rem;color:#94a3b8;padding:0 4px'>"
-        f"👤 <b style='color:#cbd5e1'>{usuario_atual['nome']}</b><br>"
-        f"{perfil_badge}</div>",
+        f"👤 <b style='color:#cbd5e1'>{usuario_atual['nome']}</b><br>{perfil_html}</div>",
         unsafe_allow_html=True
     )
     st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
     if st.button("🚪 Sair", use_container_width=True):
         del st.session_state["usuario"]
         st.rerun()
-
     st.markdown("---")
-    hoje_fmt = datetime.today().strftime("%d/%m/%Y")
     st.markdown(
-        f"<div style='font-size:.8rem;color:#475569;text-align:center'>📅 {hoje_fmt}</div>",
+        f"<div style='font-size:.8rem;color:#475569;text-align:center'>📅 {datetime.today().strftime('%d/%m/%Y')}</div>",
         unsafe_allow_html=True
     )
 
@@ -551,9 +306,9 @@ with st.sidebar:
 if "Dashboard" in pagina:
     st.markdown("## 📊 Painel de Operações")
 
-    df_hoje = df_query("SELECT * FROM agendamentos WHERE data=? ORDER BY horario", (HOJE,))
+    df_hoje = df_query("SELECT * FROM agendamentos WHERE data=%s ORDER BY horario", (HOJE,))
     df_mes  = df_query(
-        "SELECT * FROM agendamentos WHERE data LIKE ? AND status='Finalizado'",
+        "SELECT * FROM agendamentos WHERE data LIKE %s AND status='Finalizado'",
         (HOJE[:7] + "%",)
     )
 
@@ -571,18 +326,12 @@ if "Dashboard" in pagina:
     st.divider()
 
     if df_hoje.empty:
-        st.markdown("<div class='info-box'>🐾 Nenhum agendamento para hoje. "
-                    "Use <b>Novo Agendamento</b> para começar!</div>", unsafe_allow_html=True)
+        st.markdown("<div class='info-box'>🐾 Nenhum agendamento para hoje. Use <b>Novo Agendamento</b> para começar!</div>", unsafe_allow_html=True)
     else:
         hora_agora = datetime.now().strftime("%H:%M")
-        atrasados  = df_hoje[
-            (df_hoje["horario"] < hora_agora) & (~df_hoje["status"].isin(["Finalizado"]))
-        ]
+        atrasados  = df_hoje[(df_hoje["horario"] < hora_agora) & (~df_hoje["status"].isin(["Finalizado"]))]
         if not atrasados.empty:
-            st.markdown(
-                f"<div class='warn-box'>⚠️ <b>{len(atrasados)} pet(s)</b> "
-                f"com horário passado ainda não finalizados!</div>", unsafe_allow_html=True
-            )
+            st.markdown(f"<div class='warn-box'>⚠️ <b>{len(atrasados)} pet(s)</b> com horário passado ainda não finalizados!</div>", unsafe_allow_html=True)
 
         col_esq, col_dir = st.columns([3, 2])
         with col_esq:
@@ -594,18 +343,14 @@ if "Dashboard" in pagina:
                 <div class='pet-card'>
                     <div style='display:flex;justify-content:space-between;align-items:center'>
                         <div>
-                            <span style='font-family:Syne,sans-serif;font-size:1.5rem;
-                                  font-weight:800;color:{cor_hora}'>{r['horario']}</span>
-                            <span style='margin-left:12px;font-weight:600;font-size:1.05rem'>
-                                🐾 {r['pet']}</span>
+                            <span style='font-family:Syne,sans-serif;font-size:1.5rem;font-weight:800;color:{cor_hora}'>{r['horario']}</span>
+                            <span style='margin-left:12px;font-weight:600;font-size:1.05rem'>🐾 {r['pet']}</span>
                             <span style='color:#64748b;margin-left:8px'>· {r['tutor']}</span>
                         </div>
                         {badge(r['status'])}
                     </div>
                     <div style='margin-top:8px;color:#475569;font-size:.9rem'>
-                        ✂️ {r['servico']} &nbsp;·&nbsp;
-                        🚐 {r['logistica']} &nbsp;·&nbsp;
-                        💰 R$ {r['valor']:.2f}
+                        ✂️ {r['servico']} &nbsp;·&nbsp; 🚐 {r['logistica']} &nbsp;·&nbsp; 💰 R$ {float(r['valor']):.2f}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -617,20 +362,15 @@ if "Dashboard" in pagina:
             st.bar_chart(cont.set_index("Serviço"), height=200)
 
             st.markdown("### 🚐 Rotas Ativas")
-            taxi_ativo = df_hoje[
-                (df_hoje["logistica"] != "Sem Transporte") &
-                (~df_hoje["status"].isin(["Finalizado"]))
-            ]
+            taxi_ativo = df_hoje[(df_hoje["logistica"] != "Sem Transporte") & (~df_hoje["status"].isin(["Finalizado"]))]
             if taxi_ativo.empty:
                 st.caption("Nenhuma rota ativa agora.")
             else:
                 for _, r in taxi_ativo.iterrows():
                     st.markdown(f"""
-                    <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
-                                padding:10px 14px;margin-bottom:8px'>
+                    <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:8px'>
                         <b>{r['pet']}</b> — {r['horario']}<br>
-                        <span style='font-size:.85rem;color:#64748b'>{r['logistica']}</span>
-                        &nbsp; {badge(r['status'])}
+                        <span style='font-size:.85rem;color:#64748b'>{r['logistica']}</span> &nbsp; {badge(r['status'])}
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -646,10 +386,10 @@ elif "Agendamento" in pagina:
     TAXAS  = get_taxas()
 
     with st.expander("🔍 Buscar cliente já cadastrado (opcional)"):
-        busca_rapida = st.text_input("Digite nome do tutor ou pet para pré-preencher")
+        busca_rapida = st.text_input("Digite nome do tutor ou pet")
         if busca_rapida:
             res = df_query(
-                "SELECT * FROM clientes WHERE tutor LIKE ? OR pet LIKE ? LIMIT 5",
+                "SELECT * FROM clientes WHERE tutor ILIKE %s OR pet ILIKE %s LIMIT 5",
                 (f"%{busca_rapida}%", f"%{busca_rapida}%")
             )
             if not res.empty:
@@ -665,8 +405,7 @@ elif "Agendamento" in pagina:
             else:
                 st.caption("Nenhum cliente encontrado.")
 
-    def ss(key, default=""):
-        return st.session_state.get(key, default)
+    def ss(k, d=""): return st.session_state.get(k, d)
 
     with st.form("form_agendamento", clear_on_submit=False):
         st.markdown("#### 👤 Dados do Cliente")
@@ -681,41 +420,27 @@ elif "Agendamento" in pagina:
         horario = c5.selectbox("Horário *", HORARIOS)
 
         st.markdown("#### 🚐 Transporte")
-        logistica = st.radio("Configuração de Transporte", list(TAXAS.keys()), horizontal=True)
-        endereco  = st.text_input(
-            "Endereço Completo", value=ss("pf_endereco"),
-            placeholder="Rua, número, bairro, cidade",
-            disabled=(logistica == "Sem Transporte")
-        )
+        logistica = st.radio("Transporte", list(TAXAS.keys()), horizontal=True)
+        endereco  = st.text_input("Endereço Completo", value=ss("pf_endereco"),
+                                  placeholder="Rua, número, bairro, cidade",
+                                  disabled=(logistica == "Sem Transporte"))
 
         valor = PRECOS.get(servico, 0) + TAXAS.get(logistica, 0)
         taxa  = TAXAS.get(logistica, 0)
         st.markdown(f"""
-        <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;
-                    padding:14px 20px;margin:10px 0'>
+        <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 20px;margin:10px 0'>
             💰 <b>Valor estimado:</b>
-            <span style='font-family:Syne,sans-serif;font-size:1.3rem;font-weight:800;color:#15803d'>
-                R$ {valor:.2f}
-            </span>
-            <span style='color:#64748b;font-size:.85rem'>
-                &nbsp;(Serviço: R$ {PRECOS.get(servico, 0):.2f}
-                {f" + Transporte: R$ {taxa:.2f}" if taxa > 0 else ""})
-            </span>
+            <span style='font-family:Syne,sans-serif;font-size:1.3rem;font-weight:800;color:#15803d'>R$ {valor:.2f}</span>
+            <span style='color:#64748b;font-size:.85rem'>&nbsp;(Serviço: R$ {PRECOS.get(servico,0):.2f}{f" + Transporte: R$ {taxa:.2f}" if taxa > 0 else ""})</span>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("#### 📝 Observações")
-        st.text_area("Observações (opcional)", height=70,
-                     placeholder="Comportamento, raça, alergias...")
-
-        submitted = st.form_submit_button(
-            "✅ Confirmar Agendamento", type="primary", use_container_width=True
-        )
+        st.text_area("📝 Observações (opcional)", height=70, placeholder="Comportamento, raça, alergias...")
+        submitted = st.form_submit_button("✅ Confirmar Agendamento", type="primary", use_container_width=True)
 
     if submitted:
         erros = []
-        tutor = tutor.strip().title()
-        pet   = pet.strip().title()
+        tutor = tutor.strip().title(); pet = pet.strip().title()
         if not tutor: erros.append("Nome do tutor é obrigatório.")
         if not pet:   erros.append("Nome do pet é obrigatório.")
         if logistica != "Sem Transporte" and not endereco.strip():
@@ -725,26 +450,19 @@ elif "Agendamento" in pagina:
             erros.append(f"Horário {horario} está cheio para esta data (máx. 3 pets).")
 
         if erros:
-            for e in erros:
-                st.error(f"❌ {e}")
+            for e in erros: st.error(f"❌ {e}")
         else:
             novo_id = executar(
-                """INSERT INTO agendamentos
-                   (tutor, pet, servico, data, horario, logistica, endereco, status, valor)
-                   VALUES (?,?,?,?,?,?,?,'Agendado',?)""",
+                "INSERT INTO agendamentos (tutor,pet,servico,data,horario,logistica,endereco,status,valor) VALUES (%s,%s,%s,%s,%s,%s,%s,'Agendado',%s) RETURNING id",
                 (tutor, pet, servico, data_str, horario, logistica, endereco.strip(), valor)
             )
             upsert_cliente(tutor, pet, endereco.strip())
             executar(
-                "INSERT INTO historico (tutor, pet, servico, data, valor) VALUES (?,?,?,?,?)",
+                "INSERT INTO historico (tutor,pet,servico,data,valor) VALUES (%s,%s,%s,%s,%s)",
                 (tutor, pet, servico, data_str, valor)
             )
-            for k in ["pf_tutor", "pf_pet", "pf_endereco"]:
-                st.session_state.pop(k, None)
-            st.success(
-                f"✅ Agendamento #{novo_id} criado! "
-                f"{pet} agendado para {data.strftime('%d/%m/%Y')} às {horario}."
-            )
+            for k in ["pf_tutor","pf_pet","pf_endereco"]: st.session_state.pop(k, None)
+            st.success(f"✅ Agendamento #{novo_id} criado! {pet} agendado para {data.strftime('%d/%m/%Y')} às {horario}.")
             st.balloons()
 
 
@@ -758,23 +476,14 @@ elif "Balcão" in pagina:
     st.divider()
 
     data_sel = st.date_input("📅 Ver agenda do dia", value=date.today())
-    data_str = str(data_sel)
-
-    df_all    = df_query("SELECT * FROM agendamentos WHERE data=? ORDER BY horario", (data_str,))
-    df_balcao = df_all[df_all["logistica"] == "Sem Transporte"]
+    df_all    = df_query("SELECT * FROM agendamentos WHERE data=%s ORDER BY horario", (str(data_sel),))
+    df_balcao = df_all[df_all["logistica"] == "Sem Transporte"] if not df_all.empty else df_all
 
     if df_balcao.empty:
-        st.markdown(
-            f"<div class='info-box'>Nenhum pet de balcão para "
-            f"{data_sel.strftime('%d/%m/%Y')}.</div>", unsafe_allow_html=True
-        )
+        st.markdown(f"<div class='info-box'>Nenhum pet de balcão para {data_sel.strftime('%d/%m/%Y')}.</div>", unsafe_allow_html=True)
     else:
-        total       = len(df_balcao)
-        finalizados = len(df_balcao[df_balcao["status"] == "Finalizado"])
-        st.progress(
-            finalizados / total if total > 0 else 0,
-            text=f"✅ {finalizados} de {total} pets finalizados"
-        )
+        total = len(df_balcao); fin = len(df_balcao[df_balcao["status"] == "Finalizado"])
+        st.progress(fin/total if total > 0 else 0, text=f"✅ {fin} de {total} pets finalizados")
         st.divider()
 
         for _, r in df_balcao.iterrows():
@@ -783,28 +492,19 @@ elif "Balcão" in pagina:
                 with c1:
                     st.markdown(f"""
                     <div style='margin-bottom:4px'>
-                        <span style='font-family:Syne,sans-serif;font-size:1.4rem;font-weight:800'>
-                            {r['horario']}
-                        </span>
-                        &nbsp; <b>{r['pet']}</b>
-                        <span style='color:#94a3b8'> · {r['tutor']}</span>
+                        <span style='font-family:Syne,sans-serif;font-size:1.4rem;font-weight:800'>{r['horario']}</span>
+                        &nbsp; <b>{r['pet']}</b> <span style='color:#94a3b8'>· {r['tutor']}</span>
                     </div>
-                    <div style='color:#475569;font-size:.9rem'>
-                        ✂️ {r['servico']} &nbsp;·&nbsp; 💰 R$ {r['valor']:.2f}
-                    </div>
+                    <div style='color:#475569;font-size:.9rem'>✂️ {r['servico']} &nbsp;·&nbsp; 💰 R$ {float(r['valor']):.2f}</div>
                     """, unsafe_allow_html=True)
                 with c2:
                     st.markdown(badge(r["status"]), unsafe_allow_html=True)
                     idx  = STATUS_BALCAO.index(r["status"]) if r["status"] in STATUS_BALCAO else 0
-                    novo = st.selectbox(
-                        "Status", STATUS_BALCAO, index=idx,
-                        key=f"bal_{r['id']}", label_visibility="collapsed"
-                    )
+                    novo = st.selectbox("Status", STATUS_BALCAO, index=idx, key=f"bal_{r['id']}", label_visibility="collapsed")
                 with c3:
                     if st.button("💾 Salvar", key=f"save_bal_{r['id']}", type="primary"):
-                        executar("UPDATE agendamentos SET status=? WHERE id=?", (novo, int(r["id"])))
-                        st.success("Atualizado!")
-                        st.rerun()
+                        executar("UPDATE agendamentos SET status=%s WHERE id=%s", (novo, int(r["id"])))
+                        st.success("Atualizado!"); st.rerun()
                 st.divider()
 
 
@@ -818,75 +518,49 @@ elif "Taxi" in pagina:
     st.divider()
 
     data_sel = st.date_input("📅 Ver rotas do dia", value=date.today())
-    data_str = str(data_sel)
-
-    df_taxi = df_query(
-        "SELECT * FROM agendamentos WHERE data=? AND logistica != 'Sem Transporte' ORDER BY horario",
-        (data_str,)
+    df_taxi  = df_query(
+        "SELECT * FROM agendamentos WHERE data=%s AND logistica != 'Sem Transporte' ORDER BY horario",
+        (str(data_sel),)
     )
 
     if df_taxi.empty:
-        st.markdown(
-            f"<div class='info-box'>Sem rotas de Taxi Dog para "
-            f"{data_sel.strftime('%d/%m/%Y')}.</div>", unsafe_allow_html=True
-        )
+        st.markdown(f"<div class='info-box'>Sem rotas de Taxi Dog para {data_sel.strftime('%d/%m/%Y')}.</div>", unsafe_allow_html=True)
     else:
         c1, c2, c3, c4 = st.columns(4)
-        em_rota   = len(df_taxi[df_taxi["status"].isin(["A Caminho", "Retornando"])])
-        na_loja   = len(df_taxi[df_taxi["status"].isin(["Na Loja", "Pet Coletado", "Serviço Concluído"])])
+        em_rota   = len(df_taxi[df_taxi["status"].isin(["A Caminho","Retornando"])])
+        na_loja   = len(df_taxi[df_taxi["status"].isin(["Na Loja","Pet Coletado","Serviço Concluído"])])
         concluido = len(df_taxi[df_taxi["status"] == "Finalizado"])
-        c1.metric("Total de Rotas", len(df_taxi))
-        c2.metric("🚗 Em Trânsito",  em_rota)
-        c3.metric("🏪 Na Loja",      na_loja)
-        c4.metric("✅ Concluídos",   concluido)
+        c1.metric("Total de Rotas", len(df_taxi)); c2.metric("🚗 Em Trânsito", em_rota)
+        c3.metric("🏪 Na Loja", na_loja); c4.metric("✅ Concluídos", concluido)
         st.divider()
 
         for _, r in df_taxi.iterrows():
-            finalizado = r["status"] == "Finalizado"
-            with st.expander(
-                f"{'✅' if finalizado else '📍'}  {r['horario']}  —  {r['pet']}  ({r['logistica']})",
-                expanded=not finalizado
-            ):
+            fin = r["status"] == "Finalizado"
+            with st.expander(f"{'✅' if fin else '📍'}  {r['horario']}  —  {r['pet']}  ({r['logistica']})", expanded=not fin):
                 col_info, col_acao = st.columns([3, 2])
                 with col_info:
                     st.markdown(f"""
                     <div class='pet-card'>
-                        <div style='font-size:1.1rem;font-weight:700;margin-bottom:8px'>
-                            🐾 {r['pet']}
-                            <span style='color:#94a3b8;font-weight:400'>· {r['tutor']}</span>
-                        </div>
+                        <div style='font-size:1.1rem;font-weight:700;margin-bottom:8px'>🐾 {r['pet']} <span style='color:#94a3b8;font-weight:400'>· {r['tutor']}</span></div>
                         <div style='color:#475569;line-height:1.9;font-size:.92rem'>
-                            ✂️ <b>Serviço:</b> {r['servico']}<br>
-                            🚐 <b>Transporte:</b> {r['logistica']}<br>
-                            📍 <b>Endereço:</b> {r['endereco'] or '—'}<br>
-                            💰 <b>Valor:</b> R$ {r['valor']:.2f}
+                            ✂️ <b>Serviço:</b> {r['servico']}<br>🚐 <b>Transporte:</b> {r['logistica']}<br>
+                            📍 <b>Endereço:</b> {r['endereco'] or '—'}<br>💰 <b>Valor:</b> R$ {float(r['valor']):.2f}
                         </div>
                         <div style='margin-top:12px'>{badge(r['status'])}</div>
                     </div>
                     """, unsafe_allow_html=True)
                     if r["endereco"]:
-                        end_enc = str(r["endereco"]).replace(" ", "+")
-                        bc1, bc2 = st.columns(2)
-                        bc1.link_button("🗺️ Google Maps",
-                            f"https://www.google.com/maps/search/?api=1&query={end_enc}",
-                            use_container_width=True)
-                        bc2.link_button("🔵 Waze",
-                            f"https://waze.com/ul?q={end_enc}",
-                            use_container_width=True)
+                        enc = str(r["endereco"]).replace(" ", "+")
+                        b1, b2 = st.columns(2)
+                        b1.link_button("🗺️ Google Maps", f"https://www.google.com/maps/search/?api=1&query={enc}", use_container_width=True)
+                        b2.link_button("🔵 Waze",        f"https://waze.com/ul?q={enc}", use_container_width=True)
                 with col_acao:
                     st.markdown("**Atualizar progresso:**")
                     idx = STATUS_TAXI.index(r["status"]) if r["status"] in STATUS_TAXI else 0
-                    novo_status = st.select_slider(
-                        "Status", options=STATUS_TAXI,
-                        value=STATUS_TAXI[idx],
-                        key=f"taxi_{r['id']}", label_visibility="collapsed"
-                    )
-                    if st.button("💾 Salvar Status", key=f"save_taxi_{r['id']}",
-                                 type="primary", use_container_width=True):
-                        executar("UPDATE agendamentos SET status=? WHERE id=?",
-                                 (novo_status, int(r["id"])))
-                        st.success("Status atualizado!")
-                        st.rerun()
+                    novo = st.select_slider("Status", options=STATUS_TAXI, value=STATUS_TAXI[idx], key=f"taxi_{r['id']}", label_visibility="collapsed")
+                    if st.button("💾 Salvar Status", key=f"save_taxi_{r['id']}", type="primary", use_container_width=True):
+                        executar("UPDATE agendamentos SET status=%s WHERE id=%s", (novo, int(r["id"])))
+                        st.success("Status atualizado!"); st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -904,35 +578,31 @@ elif "Clientes" in pagina:
         ordem = col_o.selectbox("Ordenar por", ["Tutor A-Z", "Mais Serviços"])
 
         if busca.strip():
-            df_cli = df_query(
-                "SELECT * FROM clientes WHERE tutor LIKE ? OR pet LIKE ?",
-                (f"%{busca.strip()}%", f"%{busca.strip()}%")
-            )
+            df_cli = df_query("SELECT * FROM clientes WHERE tutor ILIKE %s OR pet ILIKE %s",
+                              (f"%{busca.strip()}%", f"%{busca.strip()}%"))
         else:
             df_cli = df_query("SELECT * FROM clientes")
 
-        df_cli = df_cli.sort_values(
-            "total_servicos" if ordem == "Mais Serviços" else "tutor",
-            ascending=(ordem != "Mais Serviços")
-        )
+        if not df_cli.empty:
+            df_cli = df_cli.sort_values(
+                "total_servicos" if ordem == "Mais Serviços" else "tutor",
+                ascending=(ordem != "Mais Serviços")
+            )
 
         if df_cli.empty:
             st.info("Nenhum cliente encontrado.")
         else:
             cc1, cc2 = st.columns(2)
             cc1.metric("Total de Clientes", len(df_cli))
-            cc2.metric("Total de Serviços Realizados", int(df_cli["total_servicos"].sum()))
+            cc2.metric("Total de Serviços", int(df_cli["total_servicos"].sum()))
             st.divider()
 
             for _, cli in df_cli.iterrows():
                 cid = int(cli["id"])
                 st.markdown(f"""
                 <div class='cliente-card'>
-                    <div style='font-size:1.05rem;font-weight:700'>
-                        🐾 {cli['pet']}
-                        <span style='color:#64748b;font-weight:400;margin-left:6px'>
-                            · {cli['tutor']}
-                        </span>
+                    <div style='font-size:1.05rem;font-weight:700'>🐾 {cli['pet']}
+                        <span style='color:#64748b;font-weight:400;margin-left:6px'>· {cli['tutor']}</span>
                     </div>
                     <div style='font-size:.85rem;color:#64748b;margin-top:4px'>
                         📍 {cli['ultimo_endereco'] or '—'} &nbsp;·&nbsp;
@@ -947,62 +617,48 @@ elif "Clientes" in pagina:
                 with col_hist:
                     with st.expander(f"📜 Histórico de {cli['pet']}"):
                         hist = df_query(
-                            "SELECT servico, data, valor FROM historico "
-                            "WHERE tutor=? AND pet=? ORDER BY data DESC",
+                            "SELECT servico, data, valor FROM historico WHERE tutor=%s AND pet=%s ORDER BY data DESC",
                             (cli["tutor"], cli["pet"])
                         )
                         if hist.empty:
                             st.caption("Nenhum serviço no histórico.")
                         else:
                             st.markdown(f"💰 **Total gasto:** R$ {hist['valor'].sum():.2f}")
-                            st.dataframe(
-                                hist.rename(columns={
-                                    "servico": "Serviço", "data": "Data", "valor": "Valor (R$)"
-                                }),
-                                use_container_width=True, hide_index=True
-                            )
+                            st.dataframe(hist.rename(columns={"servico":"Serviço","data":"Data","valor":"Valor (R$)"}),
+                                         use_container_width=True, hide_index=True)
 
                 with col_edit:
                     with st.expander("✏️ Editar dados"):
                         with st.form(f"form_edit_{cid}", clear_on_submit=False):
-                            e_tutor = st.text_input("Tutor",    value=cli["tutor"],             key=f"et_{cid}")
-                            e_pet   = st.text_input("Pet",      value=cli["pet"],               key=f"ep_{cid}")
+                            e_tutor = st.text_input("Tutor",    value=cli["tutor"],                key=f"et_{cid}")
+                            e_pet   = st.text_input("Pet",      value=cli["pet"],                  key=f"ep_{cid}")
                             e_end   = st.text_input("Endereço", value=cli["ultimo_endereco"] or "", key=f"ee_{cid}")
                             e_tel   = st.text_input("Telefone", value=cli.get("telefone","") or "", key=f"etel_{cid}")
                             if st.form_submit_button("💾 Salvar", type="primary", use_container_width=True):
-                                e_tutor = e_tutor.strip().title()
-                                e_pet   = e_pet.strip().title()
+                                e_tutor = e_tutor.strip().title(); e_pet = e_pet.strip().title()
                                 if e_tutor and e_pet:
                                     try:
                                         executar(
-                                            "UPDATE clientes SET tutor=?, pet=?, "
-                                            "ultimo_endereco=?, telefone=? WHERE id=?",
+                                            "UPDATE clientes SET tutor=%s, pet=%s, ultimo_endereco=%s, telefone=%s WHERE id=%s",
                                             (e_tutor, e_pet, e_end.strip(), e_tel.strip(), cid)
                                         )
-                                        st.success("✅ Atualizado!")
-                                        st.rerun()
-                                    except sqlite3.IntegrityError:
+                                        st.success("✅ Atualizado!"); st.rerun()
+                                    except Exception:
                                         st.error("Já existe esse tutor+pet cadastrado.")
                                 else:
                                     st.error("Tutor e Pet são obrigatórios.")
 
                 with col_del:
                     with st.expander("🗑️ Excluir"):
-                        st.warning(
-                            f"Excluir **{cli['pet']}** ({cli['tutor']}) "
-                            f"e todo o histórico?\n\n**Ação irreversível.**"
-                        )
-                        chk = st.checkbox("Confirmo", key=f"chk_del_{cid}")
+                        st.warning(f"Excluir **{cli['pet']}** ({cli['tutor']}) e todo o histórico?\n\n**Ação irreversível.**")
+                        chk = st.checkbox("Confirmo", key=f"chk_{cid}")
                         if st.button("🗑️ Excluir", key=f"del_{cid}", type="primary"):
                             if chk:
-                                executar("DELETE FROM clientes WHERE id=?", (cid,))
-                                executar("DELETE FROM historico WHERE tutor=? AND pet=?",
-                                         (cli["tutor"], cli["pet"]))
-                                st.success("Excluído.")
-                                st.rerun()
+                                executar("DELETE FROM clientes WHERE id=%s", (cid,))
+                                executar("DELETE FROM historico WHERE tutor=%s AND pet=%s", (cli["tutor"], cli["pet"]))
+                                st.success("Excluído."); st.rerun()
                             else:
                                 st.error("Marque a caixa de confirmação.")
-
                 st.divider()
 
     with aba2:
@@ -1014,18 +670,15 @@ elif "Clientes" in pagina:
             n_end   = st.text_input("Endereço Padrão")
             n_tel   = st.text_input("Telefone / WhatsApp")
             if st.form_submit_button("✅ Cadastrar Cliente", type="primary"):
-                n_tutor = n_tutor.strip().title()
-                n_pet   = n_pet.strip().title()
+                n_tutor = n_tutor.strip().title(); n_pet = n_pet.strip().title()
                 if n_tutor and n_pet:
                     try:
                         executar(
-                            "INSERT INTO clientes (tutor, pet, ultimo_endereco, telefone, total_servicos) "
-                            "VALUES (?,?,?,?,0)",
+                            "INSERT INTO clientes (tutor,pet,ultimo_endereco,telefone,total_servicos) VALUES (%s,%s,%s,%s,0)",
                             (n_tutor, n_pet, n_end.strip(), n_tel.strip())
                         )
-                        st.success(f"✅ {n_pet} ({n_tutor}) cadastrado!")
-                        st.rerun()
-                    except sqlite3.IntegrityError:
+                        st.success(f"✅ {n_pet} ({n_tutor}) cadastrado!"); st.rerun()
+                    except Exception:
                         st.warning("⚠️ Pet já cadastrado para este tutor.")
                 else:
                     st.error("Preencha nome do tutor e do pet.")
@@ -1041,33 +694,22 @@ elif "Preços" in pagina:
 
     df_srv_full = get_precos_completo()
     df_tax_full = get_taxas_completo()
-    PRECOS      = dict(zip(df_srv_full["nome"], df_srv_full["valor"]))
-    TAXAS       = dict(zip(df_tax_full["nome"], df_tax_full["valor"]))
+    PRECOS      = dict(zip(df_srv_full["nome"], df_srv_full["valor"])) if not df_srv_full.empty else {}
+    TAXAS       = dict(zip(df_tax_full["nome"], df_tax_full["valor"])) if not df_tax_full.empty else {}
 
     aba_srv, aba_tax, aba_novo = st.tabs(["✂️ Serviços", "🚐 Taxas de Transporte", "➕ Adicionar Novo"])
 
     with aba_srv:
-        st.markdown("### Tabela de Serviços")
-        st.caption("Edite o valor e a descrição (legenda) de cada serviço e clique em 💾.")
-        st.divider()
+        st.markdown("### Tabela de Serviços"); st.divider()
         for _, row in df_srv_full.iterrows():
-            nome = row["nome"]; preco_atual = float(row["valor"])
-            desc_atual = str(row["descricao"]) if row["descricao"] else ""
-            st.markdown(f"""
-            <div class='preco-card'>
-                <span style='font-weight:700'>✂️ {nome}</span>
-                &nbsp; <span style='color:#64748b;font-size:.85rem'>Atual: R$ {preco_atual:.2f}</span>
-                {"<br><span style='font-size:.82rem;color:#94a3b8;font-style:italic'>" + desc_atual + "</span>" if desc_atual else ""}
-            </div>
-            """, unsafe_allow_html=True)
+            nome = row["nome"]; pv = float(row["valor"]); desc = str(row.get("descricao","") or "")
+            st.markdown(f"<div class='preco-card'><span style='font-weight:700'>✂️ {nome}</span> &nbsp;<span style='color:#64748b;font-size:.85rem'>Atual: R$ {pv:.2f}</span>{'<br><span style=\"font-size:.82rem;color:#94a3b8;font-style:italic\">' + desc + '</span>' if desc else ''}</div>", unsafe_allow_html=True)
             ec1, ec2, ec3 = st.columns([2, 3, 1])
-            novo_preco = ec1.number_input("Valor (R$)", min_value=0.0, value=preco_atual,
-                                          step=5.0, format="%.2f", key=f"srv_val_{nome}")
-            nova_desc  = ec2.text_input("Descrição / Legenda", value=desc_atual,
-                                        placeholder="Breve descrição...", key=f"srv_desc_{nome}")
+            nv = ec1.number_input("Valor (R$)", min_value=0.0, value=pv, step=5.0, format="%.2f", key=f"srv_val_{nome}")
+            nd = ec2.text_input("Descrição", value=desc, placeholder="Breve descrição...", key=f"srv_desc_{nome}")
             ec3.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-            if ec3.button("💾", key=f"save_srv_{nome}", help=f"Salvar {nome}"):
-                salvar_preco(nome, novo_preco, nova_desc); st.success(f"✅ {nome} → R$ {novo_preco:.2f}"); st.rerun()
+            if ec3.button("💾", key=f"save_srv_{nome}"):
+                salvar_preco(nome, nv, nd); st.success(f"✅ {nome} → R$ {nv:.2f}"); st.rerun()
             st.divider()
         with st.expander("🗑️ Remover um serviço"):
             srv_rem = st.selectbox("Selecione", list(PRECOS.keys()), key="rem_srv")
@@ -1076,29 +718,18 @@ elif "Preços" in pagina:
                 else: remover_preco(srv_rem); st.success(f"'{srv_rem}' removido."); st.rerun()
 
     with aba_tax:
-        st.markdown("### Taxas de Transporte")
-        st.caption("A taxa é somada ao preço do serviço. Edite o valor e a descrição.")
-        st.divider()
+        st.markdown("### Taxas de Transporte"); st.divider()
         for _, row in df_tax_full.iterrows():
-            nome = row["nome"]; taxa_atual = float(row["valor"])
-            desc_atual = str(row["descricao"]) if row["descricao"] else ""
-            st.markdown(f"""
-            <div class='preco-card'>
-                <span style='font-weight:700'>🚐 {nome}</span>
-                &nbsp; <span style='color:#64748b;font-size:.85rem'>Atual: R$ {taxa_atual:.2f}</span>
-                {"<br><span style='font-size:.82rem;color:#94a3b8;font-style:italic'>" + desc_atual + "</span>" if desc_atual else ""}
-            </div>
-            """, unsafe_allow_html=True)
+            nome = row["nome"]; tv = float(row["valor"]); desc = str(row.get("descricao","") or "")
+            st.markdown(f"<div class='preco-card'><span style='font-weight:700'>🚐 {nome}</span> &nbsp;<span style='color:#64748b;font-size:.85rem'>Atual: R$ {tv:.2f}</span>{'<br><span style=\"font-size:.82rem;color:#94a3b8;font-style:italic\">' + desc + '</span>' if desc else ''}</div>", unsafe_allow_html=True)
             tc1, tc2, tc3 = st.columns([2, 3, 1])
-            nova_taxa = tc1.number_input("Taxa (R$)", min_value=0.0, value=taxa_atual,
-                                         step=5.0, format="%.2f", key=f"tax_val_{nome}")
-            nova_desc = tc2.text_input("Descrição / Legenda", value=desc_atual,
-                                       placeholder="Ex: Buscamos e entregamos em casa...", key=f"tax_desc_{nome}")
+            nt = tc1.number_input("Taxa (R$)", min_value=0.0, value=tv, step=5.0, format="%.2f", key=f"tax_val_{nome}")
+            nd = tc2.text_input("Descrição", value=desc, placeholder="Ex: Buscamos e entregamos...", key=f"tax_desc_{nome}")
             tc3.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-            if tc3.button("💾", key=f"save_tax_{nome}", help=f"Salvar {nome}"):
-                salvar_preco(nome, nova_taxa, nova_desc); st.success(f"✅ {nome} → R$ {nova_taxa:.2f}"); st.rerun()
+            if tc3.button("💾", key=f"save_tax_{nome}"):
+                salvar_preco(nome, nt, nd); st.success(f"✅ {nome} → R$ {nt:.2f}"); st.rerun()
             st.divider()
-        with st.expander("🗑️ Remover uma opção de transporte"):
+        with st.expander("🗑️ Remover opção de transporte"):
             tax_rem = st.selectbox("Selecione", list(TAXAS.keys()), key="rem_tax")
             if st.button("🗑️ Confirmar Remoção", type="primary", key="btn_rem_tax"):
                 if tax_rem == "Sem Transporte": st.error("'Sem Transporte' não pode ser removido.")
@@ -1106,38 +737,34 @@ elif "Preços" in pagina:
                 else: remover_preco(tax_rem); st.success(f"'{tax_rem}' removido."); st.rerun()
 
     with aba_novo:
-        st.markdown("### Adicionar Novo Item")
-        st.divider()
+        st.markdown("### Adicionar Novo Item"); st.divider()
         tipo_novo = st.radio("Tipo", ["✂️ Novo Serviço", "🚐 Nova Opção de Transporte"], horizontal=True)
         with st.form("form_novo_item", clear_on_submit=True):
             nn1, nn2 = st.columns(2)
             novo_nome  = nn1.text_input("Nome *", placeholder="Ex: Tosa Express...")
             novo_valor = nn2.number_input("Valor (R$) *", min_value=0.0, step=5.0, format="%.2f")
-            nova_desc_novo = st.text_input("Descrição / Legenda", placeholder="Breve descrição...")
+            nova_desc  = st.text_input("Descrição", placeholder="Breve descrição...")
             if st.form_submit_button("✅ Adicionar", type="primary"):
                 nome_fmt = novo_nome.strip().title()
                 if not nome_fmt: st.error("Digite um nome.")
                 else:
-                    tipo_db = "servico" if "Serviço" in tipo_novo else "logistica"
-                    adicionar_item(tipo_db, nome_fmt, novo_valor, nova_desc_novo.strip())
+                    adicionar_item("servico" if "Serviço" in tipo_novo else "logistica", nome_fmt, novo_valor, nova_desc.strip())
                     st.success(f"✅ '{nome_fmt}' adicionado — R$ {novo_valor:.2f}!"); st.rerun()
         st.divider()
         st.markdown("### 📋 Tabela Atual")
         col_s, col_t = st.columns(2)
         with col_s:
             st.markdown("**✂️ Serviços**")
-            st.dataframe(df_srv_full[["nome","valor","descricao"]].rename(
-                columns={"nome":"Serviço","valor":"Valor (R$)","descricao":"Descrição"}),
-                use_container_width=True, hide_index=True)
+            if not df_srv_full.empty:
+                st.dataframe(df_srv_full[["nome","valor","descricao"]].rename(columns={"nome":"Serviço","valor":"Valor (R$)","descricao":"Descrição"}), use_container_width=True, hide_index=True)
         with col_t:
             st.markdown("**🚐 Transportes**")
-            st.dataframe(df_tax_full[["nome","valor","descricao"]].rename(
-                columns={"nome":"Opção","valor":"Taxa (R$)","descricao":"Descrição"}),
-                use_container_width=True, hide_index=True)
+            if not df_tax_full.empty:
+                st.dataframe(df_tax_full[["nome","valor","descricao"]].rename(columns={"nome":"Opção","valor":"Taxa (R$)","descricao":"Descrição"}), use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  7. USUÁRIOS  (somente admin)
+#  7. USUÁRIOS (somente admin)
 # ══════════════════════════════════════════════════════════════════════════════
 elif "Usuários" in pagina:
     if not is_admin:
@@ -1150,169 +777,90 @@ elif "Usuários" in pagina:
 
     aba_lista, aba_novo_user = st.tabs(["👥 Usuários Cadastrados", "➕ Novo Usuário"])
 
-    # ── Lista de usuários ─────────────────────────────────────────────────────
     with aba_lista:
         df_users = df_query("SELECT id, nome, login, perfil, ativo FROM usuarios ORDER BY id")
-
         if df_users.empty:
             st.info("Nenhum usuário cadastrado.")
         else:
-            st.markdown(f"**{len(df_users)} usuário(s) cadastrado(s)**")
-            st.divider()
-
             for _, u in df_users.iterrows():
-                uid     = int(u["id"])
-                ativo   = bool(u["ativo"])
-                is_self = uid == usuario_atual["id"]
-                cor_status_user = "#059669" if ativo else "#9CA3AF"
-                perfil_html = (
-                    "<span class='badge-admin'>Admin</span>"
-                    if u["perfil"] == "admin"
-                    else "<span class='badge-func'>Funcionário</span>"
-                )
+                uid = int(u["id"]); ativo = bool(u["ativo"]); is_self = uid == int(usuario_atual["id"])
+                perfil_html = "<span class='badge-admin'>Admin</span>" if u["perfil"] == "admin" else "<span class='badge-func'>Funcionário</span>"
+                cor_u = "#059669" if ativo else "#9CA3AF"
+                st.markdown(f"""
+                <div class='user-card'>
+                    <span style='font-weight:700'>👤 {u['nome']}</span> &nbsp; {perfil_html}
+                    {"&nbsp; <span style='font-size:.75rem;color:#0ea5e9'>(você)</span>" if is_self else ""}
+                    <br><span style='font-size:.85rem;color:#64748b'>Login: <b>{u['login']}</b> &nbsp;·&nbsp; <span style='color:{cor_u}'>{'● Ativo' if ativo else '● Inativo'}</span></span>
+                </div>
+                """, unsafe_allow_html=True)
 
-                with st.container():
-                    st.markdown(f"""
-                    <div class='user-card'>
-                        <div style='display:flex;justify-content:space-between;align-items:center'>
-                            <div>
-                                <span style='font-weight:700;font-size:1rem'>
-                                    👤 {u['nome']}
-                                </span>
-                                &nbsp; {perfil_html}
-                                {"&nbsp; <span style='font-size:.75rem;color:#0ea5e9'>(você)</span>" if is_self else ""}
-                                <br>
-                                <span style='font-size:.85rem;color:#64748b'>
-                                    Login: <b>{u['login']}</b>
-                                    &nbsp;·&nbsp;
-                                    <span style='color:{cor_status_user}'>
-                                        {'● Ativo' if ativo else '● Inativo'}
-                                    </span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                col_ed, col_pw, col_tog = st.columns([2, 2, 1])
+                with col_ed:
+                    with st.expander("✏️ Editar"):
+                        with st.form(f"form_eu_{uid}", clear_on_submit=False):
+                            new_nome   = st.text_input("Nome",  value=u["nome"],  key=f"un_{uid}")
+                            new_login  = st.text_input("Login", value=u["login"], key=f"ul_{uid}")
+                            new_perfil = st.selectbox("Perfil", ["admin","funcionario"],
+                                                       index=0 if u["perfil"]=="admin" else 1,
+                                                       key=f"up_{uid}",
+                                                       format_func=lambda x: "Admin" if x=="admin" else "Funcionário")
+                            if st.form_submit_button("💾 Salvar", type="primary", use_container_width=True):
+                                nn = new_nome.strip(); nl = new_login.strip().lower()
+                                if nn and nl:
+                                    try:
+                                        executar("UPDATE usuarios SET nome=%s, login=%s, perfil=%s WHERE id=%s", (nn, nl, new_perfil, uid))
+                                        if is_self:
+                                            st.session_state["usuario"]["nome"]   = nn
+                                            st.session_state["usuario"]["perfil"] = new_perfil
+                                        st.success("✅ Atualizado!"); st.rerun()
+                                    except Exception: st.error("Login já em uso.")
+                                else: st.error("Nome e login são obrigatórios.")
 
-                    col_ed, col_pw, col_tog = st.columns([2, 2, 1])
+                with col_pw:
+                    with st.expander("🔑 Trocar senha"):
+                        with st.form(f"form_pw_{uid}", clear_on_submit=True):
+                            nova_pw = st.text_input("Nova senha *",    type="password", key=f"pw_{uid}")
+                            conf_pw = st.text_input("Confirmar senha *", type="password", key=f"cpw_{uid}")
+                            if st.form_submit_button("🔑 Alterar", type="primary", use_container_width=True):
+                                if len(nova_pw) < 6: st.error("Mínimo 6 caracteres.")
+                                elif nova_pw != conf_pw: st.error("Senhas não coincidem.")
+                                else:
+                                    executar("UPDATE usuarios SET senha_hash=%s WHERE id=%s", (_hash(nova_pw), uid))
+                                    st.success("✅ Senha alterada!")
 
-                    # Editar nome e perfil
-                    with col_ed:
-                        with st.expander("✏️ Editar"):
-                            with st.form(f"form_edit_user_{uid}", clear_on_submit=False):
-                                new_nome   = st.text_input("Nome", value=u["nome"], key=f"un_{uid}")
-                                new_login  = st.text_input("Login", value=u["login"], key=f"ul_{uid}")
-                                new_perfil = st.selectbox(
-                                    "Perfil",
-                                    ["admin", "funcionario"],
-                                    index=0 if u["perfil"] == "admin" else 1,
-                                    key=f"up_{uid}",
-                                    format_func=lambda x: "Admin" if x == "admin" else "Funcionário"
-                                )
-                                if st.form_submit_button("💾 Salvar", type="primary",
-                                                         use_container_width=True):
-                                    new_nome  = new_nome.strip()
-                                    new_login = new_login.strip().lower()
-                                    if new_nome and new_login:
-                                        try:
-                                            executar(
-                                                "UPDATE usuarios SET nome=?, login=?, perfil=? WHERE id=?",
-                                                (new_nome, new_login, new_perfil, uid)
-                                            )
-                                            # Atualiza sessão se for o próprio
-                                            if is_self:
-                                                st.session_state["usuario"]["nome"]   = new_nome
-                                                st.session_state["usuario"]["perfil"] = new_perfil
-                                            st.success("✅ Dados atualizados!")
-                                            st.rerun()
-                                        except sqlite3.IntegrityError:
-                                            st.error("Este login já está em uso.")
-                                    else:
-                                        st.error("Nome e login são obrigatórios.")
+                with col_tog:
+                    st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+                    if not is_self:
+                        if st.button("⏸ Desativar" if ativo else "▶ Ativar", key=f"tog_{uid}"):
+                            executar("UPDATE usuarios SET ativo=%s WHERE id=%s", (0 if ativo else 1, uid))
+                            st.rerun()
+                    else:
+                        st.caption("(você)")
+                st.divider()
 
-                    # Trocar senha
-                    with col_pw:
-                        with st.expander("🔑 Trocar senha"):
-                            with st.form(f"form_pw_{uid}", clear_on_submit=True):
-                                nova_pw = st.text_input("Nova senha *", type="password",
-                                                        key=f"pw_{uid}")
-                                conf_pw = st.text_input("Confirmar senha *", type="password",
-                                                        key=f"cpw_{uid}")
-                                if st.form_submit_button("🔑 Alterar Senha", type="primary",
-                                                         use_container_width=True):
-                                    if len(nova_pw) < 6:
-                                        st.error("Senha deve ter ao menos 6 caracteres.")
-                                    elif nova_pw != conf_pw:
-                                        st.error("As senhas não coincidem.")
-                                    else:
-                                        executar(
-                                            "UPDATE usuarios SET senha_hash=? WHERE id=?",
-                                            (_hash(nova_pw), uid)
-                                        )
-                                        st.success("✅ Senha alterada!")
-
-                    # Ativar / desativar
-                    with col_tog:
-                        st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
-                        if not is_self:
-                            lbl  = "⏸ Desativar" if ativo else "▶ Ativar"
-                            novo_ativo = 0 if ativo else 1
-                            if st.button(lbl, key=f"tog_{uid}"):
-                                executar(
-                                    "UPDATE usuarios SET ativo=? WHERE id=?",
-                                    (novo_ativo, uid)
-                                )
-                                st.rerun()
-                        else:
-                            st.caption("(você)")
-
-                    st.divider()
-
-    # ── Novo usuário ──────────────────────────────────────────────────────────
     with aba_novo_user:
-        st.markdown("### Criar Novo Usuário")
-        st.divider()
-
+        st.markdown("### Criar Novo Usuário"); st.divider()
         with st.form("form_novo_user", clear_on_submit=True):
-            nu1, nu2 = st.columns(2)
+            nu1, nu2  = st.columns(2)
             nu_nome   = nu1.text_input("Nome completo *")
-            nu_login  = nu2.text_input("Login (sem espaços) *", placeholder="ex: joao.silva")
-            nu_perfil = st.selectbox(
-                "Perfil *",
-                ["funcionario", "admin"],
-                format_func=lambda x: "Funcionário" if x == "funcionario" else "Admin"
-            )
-            nu_senha  = st.text_input("Senha *", type="password")
+            nu_login  = nu2.text_input("Login *", placeholder="ex: joao.silva")
+            nu_perfil = st.selectbox("Perfil *", ["funcionario","admin"],
+                                     format_func=lambda x: "Funcionário" if x=="funcionario" else "Admin")
+            nu_senha  = st.text_input("Senha *",           type="password")
             nu_conf   = st.text_input("Confirmar senha *", type="password")
-
             st.markdown("""
-            <div style='background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
-                        padding:10px 14px;font-size:.85rem;color:#92400e;margin:8px 0'>
-                ⚠️ <b>Perfis:</b><br>
-                • <b>Funcionário</b> — pode agendar, atualizar status e ver clientes.<br>
-                • <b>Admin</b> — acesso total, incluindo preços e gestão de usuários.
+            <div style='background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#92400e;margin:8px 0'>
+                ⚠️ <b>Funcionário</b> — agenda, atualiza status e vê clientes.<br>
+                &nbsp;&nbsp;&nbsp;<b>Admin</b> — acesso total incluindo preços e usuários.
             </div>
             """, unsafe_allow_html=True)
-
             if st.form_submit_button("✅ Criar Usuário", type="primary"):
-                nu_nome  = nu_nome.strip()
-                nu_login = nu_login.strip().lower().replace(" ", "_")
-                if not nu_nome or not nu_login:
-                    st.error("Nome e login são obrigatórios.")
-                elif len(nu_senha) < 6:
-                    st.error("Senha deve ter ao menos 6 caracteres.")
-                elif nu_senha != nu_conf:
-                    st.error("As senhas não coincidem.")
+                nn = nu_nome.strip(); nl = nu_login.strip().lower().replace(" ","_")
+                if not nn or not nl: st.error("Nome e login são obrigatórios.")
+                elif len(nu_senha) < 6: st.error("Senha deve ter ao menos 6 caracteres.")
+                elif nu_senha != nu_conf: st.error("Senhas não coincidem.")
                 else:
                     try:
-                        executar(
-                            "INSERT INTO usuarios (nome, login, senha_hash, perfil) VALUES (?,?,?,?)",
-                            (nu_nome, nu_login, _hash(nu_senha), nu_perfil)
-                        )
-                        st.success(
-                            f"✅ Usuário **{nu_nome}** ({nu_login}) criado como "
-                            f"{'Admin' if nu_perfil == 'admin' else 'Funcionário'}!"
-                        )
-                        st.rerun()
-                    except sqlite3.IntegrityError:
-                        st.error(f"❌ O login '{nu_login}' já está em uso.")
+                        executar("INSERT INTO usuarios (nome,login,senha_hash,perfil) VALUES (%s,%s,%s,%s)", (nn, nl, _hash(nu_senha), nu_perfil))
+                        st.success(f"✅ {nn} ({nl}) criado como {'Admin' if nu_perfil=='admin' else 'Funcionário'}!"); st.rerun()
+                    except Exception: st.error(f"❌ Login '{nl}' já está em uso.")

@@ -72,44 +72,37 @@ div[data-testid="stForm"] { border:none !important; }
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONEXÃO COM SUPABASE (PostgreSQL)
 # ══════════════════════════════════════════════════════════════════════════════
-DB_URL = st.secrets.get("DATABASE_URL",
-    "postgresql://postgres:Arty193show#@db.adhwhugtnexfuhgnizte.supabase.co:5432/postgres"
+# URL do Supabase — lida do Secret no Streamlit Cloud, ou direto no fallback
+DB_URL = st.secrets.get(
+    "DATABASE_URL",
+    "postgresql://postgres.adhwhugtnexfuhgnizte:Arty193show#@aws-0-us-west-1.pooler.supabase.com:6543/postgres"
 )
 
 
-@st.cache_resource
-def get_engine():
-    return psycopg2.connect(DB_URL, sslmode="require", connect_timeout=10)
-
-
 def get_conn():
-    try:
-        c = get_engine()
-        c.isolation_level  # testa se ainda está vivo
-        return c
-    except Exception:
-        st.cache_resource.clear()
-        return get_engine()
+    """Abre uma nova conexão a cada chamada (compatível com o pooler do Supabase)."""
+    return psycopg2.connect(DB_URL, sslmode="require", connect_timeout=15)
 
 
 def df_query(sql, params=()):
-    c = get_conn()
-    with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+    with get_conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
     return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
 
 
 def executar(sql, params=()):
-    c = get_conn()
-    with c.cursor() as cur:
-        cur.execute(sql, params)
-        try:
-            result = cur.fetchone()
-            val = result[0] if result else None
-        except Exception:
-            val = None
-    c.commit()
+    val = None
+    with get_conn() as c:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+            try:
+                result = cur.fetchone()
+                val = result[0] if result else None
+            except Exception:
+                pass
+        c.commit()
     return val
 
 

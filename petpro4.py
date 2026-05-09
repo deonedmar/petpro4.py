@@ -128,9 +128,19 @@ def _hash(s): return hashlib.sha256(s.encode()).hexdigest()
 
 
 def autenticar(login, senha):
-    df = sb_get("usuarios",
-                f"login=eq.{login.strip().lower()}&senha_hash=eq.{_hash(senha)}&ativo=eq.1")
-    return df.iloc[0].to_dict() if not df.empty else None
+    login_fmt = login.strip().lower()
+    hash_senha = _hash(senha)
+    # Busca só pelo login primeiro
+    df_login = sb_get("usuarios", f"login=eq.{login_fmt}&ativo=eq.1")
+    if df_login.empty:
+        st.error(f"🔍 Debug: usuário '{login_fmt}' não encontrado ou inativo.")
+        return None
+    # Verifica hash
+    hash_db = df_login.iloc[0]["senha_hash"]
+    if hash_db != hash_senha:
+        st.error(f"🔍 Debug: hash incorreto. Esperado: {hash_senha[:20]}... Banco: {hash_db[:20]}...")
+        return None
+    return df_login.iloc[0].to_dict()
 
 
 def tela_login():

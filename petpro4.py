@@ -18,7 +18,7 @@ st.set_page_config(
 #  SUPABASE — conexão via API REST (sem PostgreSQL direto)
 # ══════════════════════════════════════════════════════════════════════════════
 SUPA_URL = st.secrets.get("SUPABASE_URL", "https://adhwhugtnexfuhgnlzte.supabase.co")
-SUPA_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_6VVHz3Irl4XfdbsOzKCMnQ_nIPpJZQl")
+SUPA_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkaHdodWd0bmV4ZnVoZ25senRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODI1Njc3MCwiZXhwIjoyMDkzODMyNzcwfQ.wamY1K5PyN2EU0rqtHvX2ow1RrYQiNSedV4e7GL1fis")
 
 HEADERS = {
     "apikey":        SUPA_KEY,
